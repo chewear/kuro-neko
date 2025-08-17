@@ -16,20 +16,30 @@ const finalScoreElement = document.getElementById('finalScore');
 // Load sprites
 const catSprite = new Image();
 const ghostSprite = new Image();
+const redGhostSprite = new Image();
 const playerSprite = new Image();
 ghostSprite.src = 'asset/ghost.png';
+redGhostSprite.src = 'asset/red.png'; 
 catSprite.src = 'asset/neko.png';
 playerSprite.src = 'asset/player.png';
+
+// Red ghost timer
+let lastRedGhostTime = 0;
+const RED_GHOST_INTERVAL = 7000;
 
 // Game constants
 const WORLD_WIDTH = 2000;
 const WORLD_HEIGHT = 2000;
-const CANVAS_WIDTH = 800;  // Increased from 500
-const CANVAS_HEIGHT = 600; // Increased from 400
+const CANVAS_WIDTH = 800;
+const CANVAS_HEIGHT = 600;
 const GRID_SIZE = 50;
 
+// Ghost cap constants
+const MAX_REGULAR_GHOSTS = 9;  // Cap for regular white ghosts
+const MAX_RED_GHOSTS = 2;      // Cap for red ghosts
+
 // Game state
-let gameRunning = false; // Start as false until player clicks start
+let gameRunning = false;
 let score = 0;
 let highScore = parseInt(localStorage.getItem('KuroNeko_HighScore'));
 let lives = 5;
@@ -109,7 +119,7 @@ function isValidPosition(obj, newX, newY) {
         }
     }
     return newX >= obj.radius && newX <= WORLD_WIDTH - obj.radius && 
-           newY >= obj.radius && newY <= WORLD_HEIGHT - obj.radius;
+            newY >= obj.radius && newY <= WORLD_HEIGHT - obj.radius;
 }
 
 // Update cat position
@@ -163,9 +173,27 @@ function updateOwner() {
     }
 }
 
-// Spawn enemies
-function spawnEnemy() {
-    if (Math.random() < 0.02) { // 2% chance per frame
+// Spawn enemies with ghost cap
+function spawnEnemy(isRedGhost = false) {
+    let shouldSpawn = false;
+    
+    // Count current ghosts by type
+    const regularGhostCount = enemies.filter(enemy => !enemy.isRed).length;
+    const redGhostCount = enemies.filter(enemy => enemy.isRed).length;
+    
+    if (isRedGhost) {
+        // Only spawn red ghost if under the cap
+        if (redGhostCount < MAX_RED_GHOSTS) {
+            shouldSpawn = true;
+        }
+    } else if (Math.random() < 0.02) {
+        // Only spawn regular ghost if under the cap
+        if (regularGhostCount < MAX_REGULAR_GHOSTS) {
+            shouldSpawn = true;
+        }
+    }
+    
+    if (shouldSpawn) {
         const side = Math.floor(Math.random() * 4);
         let x, y;
 
@@ -188,13 +216,31 @@ function spawnEnemy() {
                 break;
         }
 
+        const baseSpeed = 1.2 + Math.random() * 0.8;
         enemies.push({
             x: x,
             y: y,
             radius: 10,
-            speed: 1.2 + Math.random() * 0.8,
-            facingRight: false // Will be updated in updateEnemies
+            speed: isRedGhost ? baseSpeed * 1.5 : baseSpeed,
+            facingRight: false,
+            isRed: isRedGhost
         });
+    }
+}
+
+// Clean up distant enemies (optional - helps with performance)
+function cleanupDistantEnemies() {
+    const MAX_DISTANCE = WORLD_WIDTH * 0.8;
+    
+    for (let i = enemies.length - 1; i >= 0; i--) {
+        const enemy = enemies[i];
+        const dx = owner.x - enemy.x;
+        const dy = owner.y - enemy.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance > MAX_DISTANCE) {
+            enemies.splice(i, 1);
+        }
     }
 }
 
@@ -212,21 +258,23 @@ function updateEnemies() {
             const moveX = (dx / distance) * enemy.speed;
             enemy.x += moveX;
             enemy.y += (dy / distance) * enemy.speed;
-            enemy.facingRight = moveX > 0; // Face right if moving right
+            enemy.facingRight = moveX > 0;
         }
 
-                // Check collision with cat
-                if (circleCollision(enemy, cat)) {
-                    enemies.splice(i, 1);
-                    score += 1;
-                    scoreElement.textContent = score;
-                    if (score > highScore) {
-                        highScore = score;
-                        localStorage.setItem('KuroNeko_HighScore', highScore);
-                        highScoreElement.textContent = highScore;
-                    }
-                    continue;
-                }        // Check collision with owner
+        // Check collision with cat
+        if (circleCollision(enemy, cat)) {
+            enemies.splice(i, 1);
+            score += 1;
+            scoreElement.textContent = score;
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('KuroNeko_HighScore', highScore);
+                highScoreElement.textContent = highScore;
+            }
+            continue;
+        }
+        
+        // Check collision with owner
         if (circleCollision(enemy, owner)) {
             enemies.splice(i, 1);
             lives--;
@@ -309,11 +357,15 @@ function draw() {
         if (screenX >= -enemy.radius && screenX <= CANVAS_WIDTH + enemy.radius &&
             screenY >= -enemy.radius && screenY <= CANVAS_HEIGHT + enemy.radius) {
             
-            if (ghostSprite && ghostSprite.complete) {
-                const spriteSize = enemy.radius * 3; // Make ghost similar size to cat
+            // Choose the correct sprite based on whether it's a red ghost
+            const currentSprite = enemy.isRed ? redGhostSprite : ghostSprite;
+            
+            if (currentSprite && currentSprite.complete) {
+                const spriteSize = enemy.radius * 3;
                 ctx.save();
-                if (!enemy.facingRight) { // Ghost faces left by default
-                    ctx.drawImage(ghostSprite,
+
+                if (!enemy.facingRight) {
+                    ctx.drawImage(currentSprite,
                         screenX - spriteSize/2,
                         screenY - spriteSize/2,
                         spriteSize,
@@ -321,7 +373,7 @@ function draw() {
                     );
                 } else {
                     ctx.scale(-1, 1);
-                    ctx.drawImage(ghostSprite,
+                    ctx.drawImage(currentSprite,
                         -screenX - spriteSize/2,
                         screenY - spriteSize/2,
                         spriteSize,
@@ -393,10 +445,19 @@ function draw() {
 function gameLoop() {
     if (!gameRunning) return;
 
+    const currentTime = Date.now();
+    
+    // Check if it's time to spawn a red ghost
+    if (currentTime - lastRedGhostTime >= RED_GHOST_INTERVAL) {
+        spawnEnemy(true);
+        lastRedGhostTime = currentTime;
+    }
+
     updateCat();
     updateOwner();
-    spawnEnemy();
+    spawnEnemy(false);
     updateEnemies();
+    cleanupDistantEnemies(); // Clean up distant ghosts for better performance
     updateCamera();
     draw();
 
@@ -409,6 +470,7 @@ function restartGame() {
     score = 0;
     lives = 9;
     enemies = [];
+    lastRedGhostTime = Date.now(); 
     startScreenElement.style.display = 'none';
     
     // Update score displays
@@ -433,10 +495,11 @@ function restartGame() {
 // Start game function
 function startGame() {
     gameRunning = true;
+    lastRedGhostTime = Date.now(); 
     startScreenElement.style.display = 'none';
     createObstacles();
     gameLoop();
 }
 
 // Initialize game (but don't start until player clicks)
-draw(); // Draw initial state
+draw();
