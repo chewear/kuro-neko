@@ -42,12 +42,14 @@ const catSprite = new Image();           // Player-controlled cat sprite
 const ghostSprite = new Image();         // Regular white ghost enemy
 const redGhostSprite = new Image();      // Fast red ghost enemy
 const playerSprite = new Image();        // Owner/player character sprite
+const grassSprite = new Image();         // Background grass tile
 
 // Load sprite assets from asset directory
 ghostSprite.src = 'asset/ghost.png';
 redGhostSprite.src = 'asset/red.png'; 
 catSprite.src = 'asset/neko.png';
 playerSprite.src = 'asset/player.png';
+grassSprite.src = 'asset/grass.jpg';
 
 // ===== GAME TIMING CONSTANTS =====
 
@@ -64,11 +66,11 @@ const RED_GHOST_INTERVAL = 7000; // 7 seconds in milliseconds
  * World and viewport configuration
  * The game world is larger than the viewport, requiring camera following
  */
-const WORLD_WIDTH = 2000;     // Total world width in pixels
-const WORLD_HEIGHT = 2000;    // Total world height in pixels
+const WORLD_WIDTH = 2400;     // Total world width in pixels
+const WORLD_HEIGHT = 2400;    // Total world height in pixels
 const CANVAS_WIDTH = 800;     // Viewport width
 const CANVAS_HEIGHT = 600;    // Viewport height
-const GRID_SIZE = 50;         // Grid cell size for visual reference
+const GRID_SIZE = 150;        // Grid cell size
 
 // ===== ENEMY SPAWN LIMITS =====
 
@@ -459,27 +461,27 @@ function updateCamera() {
  * Provides spatial awareness and visual appeal
  */
 function drawGrid() {
-    ctx.strokeStyle = '#222';  // Dark gray grid lines
-    ctx.lineWidth = 1;
-
-    // Calculate grid starting points based on camera position
-    const startX = Math.floor(camera.x / GRID_SIZE) * GRID_SIZE;
-    const startY = Math.floor(camera.y / GRID_SIZE) * GRID_SIZE;
-
-    // Draw vertical grid lines
-    for (let x = startX; x < camera.x + CANVAS_WIDTH + GRID_SIZE; x += GRID_SIZE) {
-        ctx.beginPath();
-        ctx.moveTo(x - camera.x, 0);
-        ctx.lineTo(x - camera.x, CANVAS_HEIGHT);
-        ctx.stroke();
-    }
-
-    // Draw horizontal grid lines
-    for (let y = startY; y < camera.y + CANVAS_HEIGHT + GRID_SIZE; y += GRID_SIZE) {
-        ctx.beginPath();
-        ctx.moveTo(0, y - camera.y);
-        ctx.lineTo(CANVAS_WIDTH, y - camera.y);
-        ctx.stroke();
+    if (grassSprite && grassSprite.complete) {
+        // Calculate starting tile position
+        const startX = Math.floor(camera.x / GRID_SIZE) * GRID_SIZE;
+        const startY = Math.floor(camera.y / GRID_SIZE) * GRID_SIZE;
+        
+        // Calculate visible area with one extra tile for smooth scrolling
+        const endX = startX + CANVAS_WIDTH + GRID_SIZE;
+        const endY = startY + CANVAS_HEIGHT + GRID_SIZE;
+        
+        // Draw grass tiles
+        for (let y = startY; y < endY; y += GRID_SIZE) {
+            for (let x = startX; x < endX; x += GRID_SIZE) {
+                ctx.drawImage(
+                    grassSprite,
+                    x - camera.x,
+                    y - camera.y,
+                    GRID_SIZE,
+                    GRID_SIZE
+                );
+            }
+        }
     }
 }
 
